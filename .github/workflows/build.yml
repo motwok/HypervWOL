@@ -17,6 +17,7 @@ jobs:
       matrix:
         platform: [x64]
         configuration: [Debug, Release]
+        node-version: [latest]
 
     steps:
     - uses: actions/checkout@v4
@@ -102,7 +103,7 @@ jobs:
     #     exit 0
 
     - name: Create GitHub Release with asset
-      if: steps.release_check.outputs.exists == 'false'
+    #  if: steps.release_check.outputs.exists == 'false'
       shell: pwsh
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
