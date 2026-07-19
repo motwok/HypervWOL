@@ -17,30 +17,31 @@ jobs:
       matrix:
         platform: [x64]
         configuration: [Debug, Release]
-        node-version: [latest]
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
 
     - name: Setup GitVersion
-      uses: gittools/actions/gitversion/setup@v1.2.0
+      uses: gittools/actions/gitversion/setup@v3
       with:
         versionSpec: '5.x'
 
     - name: Determine version
       id: gitversion
-      uses: gittools/actions/gitversion/execute@v1.2.0
+      uses: gittools/actions/gitversion/execute@v3
 
     - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v2
+      uses: microsoft/setup-msbuild@v3
 
     - name: Build Code
+      if: matrix.configuration == 'Release' || github.event_name != 'pull_request'
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: msbuild /m /p:Configuration=${{matrix.configuration}} /p:Platform=${{matrix.platform}} /p:VersionMajor=${{steps.gitversion.outputs.major}} /p:VersionMinor=${{steps.gitversion.outputs.minor}} /p:VersionPatch=${{steps.gitversion.outputs.patch}} /p:VersionBuild=${{steps.gitversion.outputs.commitsSinceVersionSource}} HypervWOL.slnx
 
     - name: Upload Build Artifacts to GitHub Actions Docs
+      if: matrix.configuration == 'Release' || github.event_name != 'pull_request'
       uses: actions/upload-artifact@v4
       with:
         name: HypervWOL-${{steps.gitversion.outputs.semVer}}-${{matrix.platform}}-${{matrix.configuration}}
@@ -49,6 +50,7 @@ jobs:
           ${{matrix.platform}}/${{matrix.configuration}}/*.pdb
           scripts/
 
+    # AB HIER: Reine Release-Schritte, geschützt über Branch und Konfiguration
     - name: Compute release tag
       if: github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.configuration == 'Release'
       id: release_tag
@@ -60,7 +62,7 @@ jobs:
     - name: Fetch PR Description for Changelog
       if: github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.configuration == 'Release'
       id: get_pr
-      uses: actions/github-script@v7
+      uses: actions/github-script@v9
       with:
         script: |
           const result = await github.rest.repos.listPullRequestsAssociatedWithCommit({
@@ -77,8 +79,7 @@ jobs:
           }
 
           const fs = require('fs');
-          const output = `body<<EOF\n${prDescription}\nEOF\n`;
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, output);
+          fs.writeFileSync('./CHANGELOG.md', prDescription, 'utf-8');
 
     - name: Check if release already exists
       if: github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.configuration == 'Release'
@@ -100,20 +101,25 @@ jobs:
     - name: Create Release Archive (with Release Notes)
       if: github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.configuration == 'Release' && steps.release_check.outputs.exists == 'false'
       shell: pwsh
-      env:
-        RELEASE_BODY: ${{ steps.get_pr.outputs.body }}
       run: |
+        if (Test-Path ./release/x64) { Remove-Item ./release/x64 -Recurse -Force }
+
         New-Item -ItemType Directory -Force -Path ./release/x64
         Copy-Item -Path "${{matrix.platform}}/${{matrix.configuration}}/*" -Destination ./release/x64 -Force
-        $env:RELEASE_BODY | Out-File -FilePath ./CHANGELOG.md -Encoding utf8
-        Compress-Archive -Path ./release/x64/*, ./LICENSE.txt, ./INSTALL.md, ./CHANGELOG.md -DestinationPath HypervWOL-${{steps.gitversion.outputs.semVer}}-x64.zip
+        
+        $filesToArchive = Get-Item ./release/x64/*
+        if (Test-Path ./LICENSE.txt) { $filesToArchive += Get-Item ./LICENSE.txt }
+        if (Test-Path ./INSTALL.md)   { $filesToArchive += Get-Item ./INSTALL.md }
+        if (Test-Path ./CHANGELOG.md) { $filesToArchive += Get-Item ./CHANGELOG.md }
+        
+        Compress-Archive -Path $filesToArchive -DestinationPath HypervWOL-${{steps.gitversion.outputs.semVer}}-x64.zip
 
     - name: Create GitHub Release with asset
       if: github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.configuration == 'Release' && steps.release_check.outputs.exists == 'false'
       shell: pwsh
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
       run: |
-        gh release create $env:RELEASE_TAG "HypervWOL-${{steps.gitversion.outputs.semVer}}-x64.zip" "LICENSE.txt" --target master --notes-file CHANGELOG.md --title "Release $env:RELEASE_TAG"
-        Remove-Item CHANGELOG.md
+        gh release create $env:RELEASE_TAG "HypervWOL-${{steps.gitversion.outputs.semVer}}-x64.zip" --target master --notes-file CHANGELOG.md --title "Release $env:RELEASE_TAG"
+        
+        if (Test-Path ./CHANGELOG.md) { Remove-Item ./CHANGELOG.md -Force }
