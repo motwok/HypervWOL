@@ -17,6 +17,9 @@ jobs:
       matrix:
         platform: [x64]
         configuration: [Debug, Release]
+        # Verhindert, dass die Debug-Konfiguration bei Pull Requests überhaupt startet
+        exclude:
+          - configuration: ${{ github.event_name == 'pull_request' && 'Debug' || 'KeinAusschluss' }}
 
     steps:
     - uses: actions/checkout@v5
@@ -30,18 +33,16 @@ jobs:
 
     - name: Determine version
       id: gitversion
-      uses: gittools/actions/gitversion/execute@v3
+      uses: gittools/actions/gitversion/execute@v3.1.11
 
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v3
 
     - name: Build Code
-      if: matrix.configuration == 'Release' || github.event_name != 'pull_request'
       working-directory: ${{env.GITHUB_WORKSPACE}}
       run: msbuild /m /p:Configuration=${{matrix.configuration}} /p:Platform=${{matrix.platform}} /p:VersionMajor=${{steps.gitversion.outputs.major}} /p:VersionMinor=${{steps.gitversion.outputs.minor}} /p:VersionPatch=${{steps.gitversion.outputs.patch}} /p:VersionBuild=${{steps.gitversion.outputs.commitsSinceVersionSource}} HypervWOL.slnx
 
     - name: Upload Build Artifacts to GitHub Actions Docs
-      if: matrix.configuration == 'Release' || github.event_name != 'pull_request'
       uses: actions/upload-artifact@v4
       with:
         name: HypervWOL-${{steps.gitversion.outputs.semVer}}-${{matrix.platform}}-${{matrix.configuration}}
@@ -50,7 +51,10 @@ jobs:
           ${{matrix.platform}}/${{matrix.configuration}}/*.pdb
           scripts/
 
-    # AB HIER: Reine Release-Schritte, geschützt über Branch und Konfiguration
+    # =========================================================================
+    # AB HIER: RELEASE-LOGIK (SCHLIESST PULL REQUESTS AUS via 'if')
+    # =========================================================================
+
     - name: Compute release tag
       if: github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.configuration == 'Release'
       id: release_tag
@@ -59,27 +63,88 @@ jobs:
         $tag = "v${{ steps.gitversion.outputs.majorMinorPatch }}"
         "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-    - name: Fetch PR Description for Changelog
+    - name: Fetch PR History for Changelog
       if: github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.configuration == 'Release'
       id: get_pr
-      uses: actions/github-script@v9
+      uses: actions/github-script@v7
       with:
         script: |
-          const result = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+          const allPrsResult = await github.rest.repos.listPullRequestsAssociatedWithCommit({
             owner: context.repo.owner,
             repo: context.repo.repo,
             commit_sha: context.sha,
           });
-
-          const prs = result.data;
-          let prDescription = "No PR description found for this release.";
-
-          if (prs && prs.length > 0 && prs[0].body) {
-            prDescription = prs[0].body;
+          
+          let currentPrDescription = "No PR description found for this release.";
+          if (allPrsResult.data && allPrsResult.data.length > 0) {
+            currentPrDescription = allPrsResult.data[0].body || "No PR description provided.";
           }
 
+          let allClosedPrs = [];
+          let page = 1;
+          let keepFetching = true;
+
+          while (keepFetching) {
+            const historyResult = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'closed',
+              base: 'master',
+              per_page: 100,
+              page: page,
+              sort: 'updated',
+              direction: 'desc'
+            });
+
+            if (historyResult.data && historyResult.data.length > 0) {
+              allClosedPrs = allClosedPrs.concat(historyResult.data);
+              page++;
+              if (historyResult.data.length < 100) {
+                keepFetching = false;
+              }
+            } else {
+              keepFetching = false;
+            }
+          }
+
+          const excludeUsers = ['dependabot', 'dependabot[bot]', 'github-actions[bot]'];
+          const mergedPrs = allClosedPrs.filter(pr => pr.merged_at !== null && !excludeUsers.includes(pr.user.login));
+
+          let fullHistoryMarkdown = "# HypervWOL Change Log\n\nAll notable changes to this project will be documented in this file.\n\n";
+
+          if (mergedPrs.length > 0) {
+            const currentVersion = "v${{ steps.gitversion.outputs.majorMinorPatch }}";
+
+            for (let i = 0; i < mergedPrs.length; i++) {
+              const pr = mergedPrs[i];
+              const date = new Date(pr.merged_at).toLocaleDateString('de-DE');
+              
+              if (i === 0) {
+                fullHistoryMarkdown += `## [${currentVersion}] - ${date} (PR #${pr.number}: ${pr.title})\n\n`;
+              } else {
+                fullHistoryMarkdown += `## PR #${pr.number}: ${pr.title} (${date})\n\n`;
+              }
+
+              if (pr.body) {
+                fullHistoryMarkdown += `${pr.body}\n\n`;
+              } else {
+                fullHistoryMarkdown += "_Keine detaillierte Beschreibung hinterlegt._\n\n";
+              }
+              fullHistoryMarkdown += "---\n\n";
+            }
+          } else {
+            fullHistoryMarkdown += "_Keine Historie verfügbar._\n";
+          }
+
+          // FIX: Nutzung eines eindeutigen Krypto-Sicheren Delimiters für Multiline-Outputs
           const fs = require('fs');
-          fs.writeFileSync('./CHANGELOG.md', prDescription, 'utf-8');
+          const crypto = require('crypto');
+          
+          const delimiterCurrent = `EOF_${crypto.randomBytes(10).toString('hex')}`;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `current_body<<${delimiterCurrent}\n${currentPrDescription}\n${delimiterCurrent}\n`);
+          
+          const delimiterHistory = `EOF_${crypto.randomBytes(10).toString('hex')}`;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `history_body<<${delimiterHistory}\n${fullHistoryMarkdown}\n${delimiterHistory}\n`);
 
     - name: Check if release already exists
       if: github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.configuration == 'Release'
@@ -98,21 +163,18 @@ jobs:
         }
         exit 0
 
-    - name: Create Release Archive (with Release Notes)
+    - name: Create Release Archive (with Full History)
       if: github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.configuration == 'Release' && steps.release_check.outputs.exists == 'false'
       shell: pwsh
+      env:
+        HISTORY_BODY: ${{ steps.get_pr.outputs.history_body }}
       run: |
-        if (Test-Path ./release/x64) { Remove-Item ./release/x64 -Recurse -Force }
-
         New-Item -ItemType Directory -Force -Path ./release/x64
         Copy-Item -Path "${{matrix.platform}}/${{matrix.configuration}}/*" -Destination ./release/x64 -Force
         
-        $filesToArchive = Get-Item ./release/x64/*
-        if (Test-Path ./LICENSE.txt) { $filesToArchive += Get-Item ./LICENSE.txt }
-        if (Test-Path ./INSTALL.md)   { $filesToArchive += Get-Item ./INSTALL.md }
-        if (Test-Path ./CHANGELOG.md) { $filesToArchive += Get-Item ./CHANGELOG.md }
+        $env:HISTORY_BODY | Out-File -FilePath ./CHANGELOG.md -Encoding utf8
         
-        Compress-Archive -Path $filesToArchive -DestinationPath HypervWOL-${{steps.gitversion.outputs.semVer}}-x64.zip
+        Compress-Archive -Path ./release/x64/*, ./LICENSE.txt, ./INSTALL.md, ./CHANGELOG.md -DestinationPath HypervWOL-${{steps.gitversion.outputs.semVer}}-x64.zip
 
     - name: Create GitHub Release with asset
       if: github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.configuration == 'Release' && steps.release_check.outputs.exists == 'false'
@@ -120,8 +182,9 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
+        CURRENT_BODY: ${{ steps.get_pr.outputs.current_body }}
       run: |
-        # KORREKTUR: Variablenauflösung im Titel über doppelte Anführungszeichen sichergestellt
-        gh release create $env:RELEASE_TAG "HypervWOL-${{steps.gitversion.outputs.semVer}}-x64.zip" --target master --notes-file CHANGELOG.md --title "Release $env:RELEASE_TAG"
-        
-        if (Test-Path ./CHANGELOG.md) { Remove-Item ./CHANGELOG.md -Force }
+        $env:CURRENT_BODY | Out-File -FilePath release_notes_temp.txt -Encoding utf8
+        gh release create $env:RELEASE_TAG "HypervWOL-${{steps.gitversion.outputs.semVer}}-x64.zip" "LICENSE.txt" --target master --notes-file release_notes_temp.txt --title "Release $env:RELEASE_TAG"
+        Remove-Item CHANGELOG.md
+        Remove-Item release_notes_temp.txt
