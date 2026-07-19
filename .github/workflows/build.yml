@@ -85,21 +85,21 @@ jobs:
         $tag = "v${{ steps.gitversion.outputs.majorMinorPatch }}"
         "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-    - name: Check if release already exists
-      id: release_check
-      shell: pwsh
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        $tag = "${{ steps.release_tag.outputs.tag }}"
-        gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-        $exists = ($LASTEXITCODE -eq 0)
-        if ($exists) {
-          "exists=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-        } else {
-          "exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-        }
-        exit 0
+    # - name: Check if release already exists
+    #   id: release_check
+    #   shell: pwsh
+    #   env:
+    #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    #   run: |
+    #     $tag = "${{ steps.release_tag.outputs.tag }}"
+    #     gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+    #     $exists = ($LASTEXITCODE -eq 0)
+    #     if ($exists) {
+    #       "exists=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+    #     } else {
+    #       "exists=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+    #     }
+    #     exit 0
 
     - name: Create GitHub Release with asset
       if: steps.release_check.outputs.exists == 'false'
