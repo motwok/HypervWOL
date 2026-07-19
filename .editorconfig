@@ -1,0 +1,29 @@
+﻿root = true
+
+# All files
+[*]
+charset = utf-8
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# C++ files
+[*.{cpp,h,hpp,c,cc,cxx}]
+indent_size = 4
+
+# Visual Studio project files
+[*.{vcxproj,vcxproj.filters,props,targets}]
+indent_size = 2
+
+# YAML files
+[*.{yml,yaml}]
+indent_size = 2
+
+# PowerShell files
+[*.ps1]
+indent_size = 4
+
+# Markdown files
+[*.md]
+indent_size = 2
+trim_trailing_whitespace = false

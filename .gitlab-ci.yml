@@ -1,0 +1,69 @@
+image: mcr.microsoft.com/dotnet/framework/sdk:4.8-windowsservercore-ltsc2022
+
+stages:
+  - build
+  - package
+  - release
+
+variables:
+  SOLUTION: "HypervWOL.slnx"
+  MSBUILD_PATH: "C:\\Program Files\\Microsoft Visual Studio\\2022\\BuildTools\\MSBuild\\Current\\Bin\\MSBuild.exe"
+  GIT_DEPTH: "0"
+
+before_script:
+  - choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --includeOptional --passive" -y
+  - choco install visualstudio2022-workload-vctools -y
+  - choco install gitversion.portable -y
+
+build-x64:
+  stage: build
+  tags:
+    - windows
+  script:
+    - gitversion /output buildserver
+    - |
+      & "$env:MSBUILD_PATH" /m /p:Configuration=Release /p:Platform=x64 /p:VersionMajor=$env:GitVersion_Major /p:VersionMinor=$env:GitVersion_Minor /p:VersionPatch=$env:GitVersion_Patch /p:VersionBuild=$env:GitVersion_CommitsSinceVersionSource $env:SOLUTION
+  artifacts:
+    paths:
+      - x64/Release/
+    expire_in: 30 days
+  only:
+    - main
+    - master
+    - tags
+
+package:
+  stage: package
+  tags:
+    - windows
+  dependencies:
+    - build-x64
+  script:
+    - gitversion /output buildserver
+    - Compress-Archive -Path x64/Release/* -DestinationPath HypervWOL-$env:GitVersion_SemVer-x64.zip
+  artifacts:
+    paths:
+      - HypervWOL-*-x64.zip
+    expire_in: 30 days
+  only:
+    - main
+    - master
+    - tags
+
+release-master:
+  stage: release
+  tags:
+    - windows
+  dependencies:
+    - package
+  script:
+    - gitversion /output buildserver
+    - $tag = "v$env:GitVersion_SemVer"
+    - $releaseUri = "$env:CI_API_V4_URL/projects/$env:CI_PROJECT_ID/releases/$tag"
+    - $createUri = "$env:CI_API_V4_URL/projects/$env:CI_PROJECT_ID/releases"
+    - $headers = @{ "JOB-TOKEN" = "$env:CI_JOB_TOKEN" }
+    - $exists = $false
+    - try { Invoke-RestMethod -Method Get -Uri $releaseUri -Headers $headers | Out-Null; $exists = $true } catch { $exists = $false }
+    - if (-not $exists) { Invoke-RestMethod -Method Post -Uri $createUri -Headers $headers -Body @{ name = "Release $tag"; tag_name = $tag; ref = "master"; description = "Automated release for master" } }
+  only:
+    - master
