@@ -1,6 +1,11 @@
 # Install from Source Guide
 
-# Build and Install from Source
+## Prerequisites
+- Windows 10 or Windows Server 2016 or later
+- Administrator privileges for service installation and running console mode
+- Visual Studio 2026 with C++ Desktop Development workload
+
+## Build and Install from Source
 
 ### Clone the Repository
 

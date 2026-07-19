@@ -40,7 +40,7 @@ package:
     - build-x64
   script:
     - gitversion /output buildserver
-    - Compress-Archive -Path x64/Release/* -DestinationPath HypervWOL-$env:GitVersion_SemVer-x64.zip
+    - Compress-Archive -Path @("x64/Release/*", "LICENSE.txt") -DestinationPath HypervWOL-$env:GitVersion_SemVer-x64.zip
   artifacts:
     paths:
       - HypervWOL-*-x64.zip
@@ -64,6 +64,6 @@ release-master:
     - $headers = @{ "JOB-TOKEN" = "$env:CI_JOB_TOKEN" }
     - $exists = $false
     - try { Invoke-RestMethod -Method Get -Uri $releaseUri -Headers $headers | Out-Null; $exists = $true } catch { $exists = $false }
-    - if (-not $exists) { Invoke-RestMethod -Method Post -Uri $createUri -Headers $headers -Body @{ name = "Release $tag"; tag_name = $tag; ref = "master"; description = "Automated release for master" } }
+    - if (-not $exists) { Invoke-RestMethod -Method Post -Uri $createUri -Headers $headers -Body @{ name = "Release $tag"; tag_name = $tag; ref = "master"; description = "Automated release for master"; assets = @{ links = @(@{ name = "HypervWOL-$env:GitVersion_SemVer-x64.zip"; url = "$env:CI_PROJECT_URL/-/jobs/artifacts/$env:CI_COMMIT_REF_NAME/raw/HypervWOL-$env:GitVersion_SemVer-x64.zip?job=package" }, @{ name = "LICENSE.txt"; url = "$env:CI_PROJECT_URL/-/jobs/artifacts/$env:CI_COMMIT_REF_NAME/raw/LICENSE.txt?job=package" }) } } }
   only:
     - master

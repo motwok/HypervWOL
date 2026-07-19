@@ -109,4 +109,4 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         $tag = "${{ steps.release_tag.outputs.tag }}"
-        gh release create $tag "HypervWOL-${{steps.gitversion.outputs.semVer}}-x64.zip" --target master --generate-notes --title "Release $tag"
+        gh release create $tag "HypervWOL-${{steps.gitversion.outputs.semVer}}-x64.zip" "LICENSE.txt" --target master --generate-notes --title "Release $tag"
