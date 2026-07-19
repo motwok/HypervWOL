@@ -119,7 +119,9 @@ jobs:
       shell: pwsh
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RELEASE_TAG: ${{ steps.release_tag.outputs.tag }}
       run: |
+        # KORREKTUR: Variablenauflösung im Titel über doppelte Anführungszeichen sichergestellt
         gh release create $env:RELEASE_TAG "HypervWOL-${{steps.gitversion.outputs.semVer}}-x64.zip" --target master --notes-file CHANGELOG.md --title "Release $env:RELEASE_TAG"
         
         if (Test-Path ./CHANGELOG.md) { Remove-Item ./CHANGELOG.md -Force }
