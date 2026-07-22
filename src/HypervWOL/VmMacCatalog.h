@@ -31,6 +31,7 @@
 #include <mutex>
 #include <string>
 
+#include "MacAddress.h"
 #include "WmiConnection.h"
 #include "generated/Msvm_ComputerSystem.h"
 #include "generated/Msvm_VirtualSystemSettingData.h"
@@ -46,11 +47,14 @@ struct VmInfo
 class VmMacCatalog
 {
 public:
-    using MacKey = std::array<unsigned char, 6>;
+    using MacKey = MacAddress::MacKey;
+    using Cache = std::map<MacAddress, VmInfo>;
+    using iterator = Cache::iterator;
+    using const_iterator = Cache::const_iterator;
 
     bool Refresh()
     {
-        std::map<MacKey, VmInfo> newCache;
+        std::map<MacAddress, VmInfo> newCache;
 
         WMI::Virtualization::WmiConnection conn;
         if (!conn.Connect())
@@ -91,28 +95,36 @@ public:
 
             for (auto& nic : nics)
             {
-                MacKey key{};
-                bool parsed = false;
-                std::wstring macText;
+                bool parsedAny = false;
 
-                macText = nic.GetAddress();
-                parsed = TryParseMacString(macText, key);
-
-                if (!parsed)
+                const std::wstring dynamicMacText = nic.GetAddress();
+                MacAddress dynamicKey;
+                if (TryParseMacString(dynamicMacText, dynamicKey))
                 {
-                    macText = nic.GetStaticMacAddress();
-                    parsed = TryParseMacString(macText, key);
+                    newCache[dynamicKey] = { vmName, vmWmiPath };
+                    std::wcout << L"[Cache] Dynamic MAC " << dynamicMacText
+                               << L" -> VM '" << vmName << L"'" << std::endl;
+                    parsedAny = true;
                 }
 
-                if (!parsed)
+                const std::wstring staticMacText = nic.GetStaticMacAddress();
+                MacAddress staticKey;
+                if (TryParseMacString(staticMacText, staticKey))
+                {
+                    if (!parsedAny || staticKey != dynamicKey)
+                    {
+                        newCache[staticKey] = { vmName, vmWmiPath };
+                        std::wcout << L"[Cache] Static MAC " << staticMacText
+                                   << L" -> VM '" << vmName << L"'" << std::endl;
+                    }
+                    parsedAny = true;
+                }
+
+                if (!parsedAny)
                 {
                     std::wcout << L"[Cache] VM '" << vmName << L"': keine MAC-Adresse in der Hyper-V-WMI gefunden." << std::endl;
                     continue;
                 }
-
-                newCache[key] = { vmName, vmWmiPath };
-                std::wcout << L"[Cache] MAC " << macText
-                           << L" -> VM '" << vmName << L"'" << std::endl;
             }
         }
 
@@ -126,7 +138,14 @@ public:
         }
     }
 
-    bool TryGetVmInfo(const MacKey& mac, VmInfo& vmInfo) const
+    // Map-like interface
+    const VmInfo& operator[](const MacAddress& mac) const
+    {
+        std::lock_guard<std::mutex> lock(m_cacheMutex);
+        return m_vmCache.at(mac);
+    }
+
+    bool TryGetVmInfo(const MacAddress& mac, VmInfo& vmInfo) const
     {
         std::lock_guard<std::mutex> lock(m_cacheMutex);
         const auto cacheIt = m_vmCache.find(mac);
@@ -135,6 +154,42 @@ public:
 
         vmInfo = cacheIt->second;
         return true;
+    }
+
+    const_iterator find(const MacAddress& mac) const
+    {
+        std::lock_guard<std::mutex> lock(m_cacheMutex);
+        return m_vmCache.find(mac);
+    }
+
+    const_iterator begin() const
+    {
+        std::lock_guard<std::mutex> lock(m_cacheMutex);
+        return m_vmCache.begin();
+    }
+
+    const_iterator end() const
+    {
+        std::lock_guard<std::mutex> lock(m_cacheMutex);
+        return m_vmCache.end();
+    }
+
+    size_t size() const
+    {
+        std::lock_guard<std::mutex> lock(m_cacheMutex);
+        return m_vmCache.size();
+    }
+
+    bool empty() const
+    {
+        std::lock_guard<std::mutex> lock(m_cacheMutex);
+        return m_vmCache.empty();
+    }
+
+    bool contains(const MacAddress& mac) const
+    {
+        std::lock_guard<std::mutex> lock(m_cacheMutex);
+        return m_vmCache.find(mac) != m_vmCache.end();
     }
 
     ULONGLONG GetLastRefreshTick() const
@@ -146,7 +201,7 @@ public:
 private:
     static constexpr ULONGLONG VM_CACHE_TTL_MS = 300000;
 
-    static bool TryParseMacString(const std::wstring& input, MacKey& macOut)
+    static bool TryParseMacString(const std::wstring& input, MacAddress& macOut)
     {
         std::wstring hexOnly;
         hexOnly.reserve(input.size());
@@ -165,12 +220,12 @@ private:
             const unsigned long val = wcstoul(hex, &end, 16);
             if (end != hex + 2)
                 return false;
-            macOut[b] = static_cast<unsigned char>(val);
+            macOut.SetByte(b, static_cast<unsigned char>(val));
         }
         return true;
     }
 
-    std::map<MacKey, VmInfo> m_vmCache;
+    std::map<MacAddress, VmInfo> m_vmCache;
     mutable std::mutex m_cacheMutex;
     ULONGLONG m_cacheTimestamp = 0;
 };

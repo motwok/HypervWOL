@@ -181,6 +181,8 @@
     <ClCompile Include="HypervWOLWorker.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="ListenerAddressList.h" />
+    <ClInclude Include="MacAddress.h" />
     <ClInclude Include="ServiceManager.h" />
     <ClInclude Include="VmMacCatalog.h" />
     <ClInclude Include="VmStarter.h" />
@@ -189,6 +191,7 @@
     <ClInclude Include="generated\Msvm_VirtualSystemSettingData.h" />
     <ClInclude Include="generated\Msvm_SyntheticEthernetPortSettingData.h" />
     <ClInclude Include="HypervWOLWorker.h" />
+    <ClInclude Include="WolPacket.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="version.rc" />

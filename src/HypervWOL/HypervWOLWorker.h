@@ -23,6 +23,8 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include "ListenerAddressList.h"
+#include "MacAddress.h"
 #include "VmMacCatalog.h"
 
 #include <map>
@@ -42,19 +44,10 @@ public:
     void Run(HANDLE stopEvent, const std::wstring& listenSpec = L"");
 
 private:
-    using MacKey = VmMacCatalog::MacKey;
+    using MacKey = MacAddress;
 
-    struct ListenEndpoint
-    {
-        std::wstring ip;
-        unsigned short port;
-    };
+    using ListenEndpoint = ListenerAddressList::Endpoint;
 
-    // Validates a WOL magic packet and extracts the target MAC into macOut.
-    static bool ParseWolPacket(const unsigned char* data, int len, unsigned char macOut[6]);
-
-    static bool ParseListenSpec(const std::wstring& listenSpec, std::vector<ListenEndpoint>& endpoints);
-    static std::wstring Trim(const std::wstring& value);
     static DWORD WINAPI ListenerThreadProc(LPVOID lpParam);
 
     struct ListenerThreadContext

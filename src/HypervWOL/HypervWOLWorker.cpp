@@ -20,98 +20,18 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include "HypervWOLWorker.h"
-
+#include "MacAddress.h"
 #include "VmStarter.h"
+#include "WolPacket.h"
 
+#include <array>
 #include <iostream>
 #include <string>
-#include <cwctype>
 
 #pragma comment(lib, "ws2_32.lib")
 
-static constexpr int       WOL_PACKET_MIN  = 102;
 static constexpr ULONGLONG WOL_COOLDOWN_MS = 60000;
 static constexpr ULONGLONG VM_CACHE_TTL_MS = 300000;
-
-std::wstring HypervWOLWorker::Trim(const std::wstring& value)
-{
-    size_t start = 0;
-    while (start < value.size() && iswspace(value[start]))
-        ++start;
-    size_t end = value.size();
-    while (end > start && iswspace(value[end - 1]))
-        --end;
-    return value.substr(start, end - start);
-}
-
-bool HypervWOLWorker::ParseListenSpec(const std::wstring& listenSpec, std::vector<ListenEndpoint>& endpoints)
-{
-    endpoints.clear();
-
-    if (listenSpec.empty())
-    {
-        endpoints.push_back({ L"0.0.0.0", 9 });
-        return true;
-    }
-
-    size_t start = 0;
-    while (start <= listenSpec.size())
-    {
-        size_t end = listenSpec.find_first_of(L",;", start);
-        std::wstring token = Trim(listenSpec.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start));
-        if (!token.empty())
-        {
-            const size_t colon = token.find(L':');
-            std::wstring ip = colon == std::wstring::npos ? token : token.substr(0, colon);
-            std::wstring portText = colon == std::wstring::npos ? L"" : token.substr(colon + 1);
-            ip = Trim(ip);
-            portText = Trim(portText);
-            if (ip.empty())
-                ip = L"0.0.0.0";
-
-            unsigned long port = 9;
-            if (!portText.empty())
-            {
-                wchar_t* endPtr = nullptr;
-                port = wcstoul(portText.c_str(), &endPtr, 10);
-                if (endPtr == portText.c_str() || *endPtr != L'\0' || port == 0 || port > 65535)
-                {
-                    std::wcerr << L"[Config] Ungueltiger Port in Listen-Eintrag: '" << token << L"'" << std::endl;
-                    if (end == std::wstring::npos)
-                        break;
-                    start = end + 1;
-                    continue;
-                }
-            }
-
-            endpoints.push_back({ ip, static_cast<unsigned short>(port) });
-        }
-
-        if (end == std::wstring::npos)
-            break;
-        start = end + 1;
-    }
-
-    if (endpoints.empty())
-        endpoints.push_back({ L"0.0.0.0", 9 });
-
-    return true;
-}
-
-// ---------------------------------------------------------------------------
-// ParseWolPacket
-// Validates a WOL magic packet (6x0xFF + 16xMAC) and extracts the MAC.
-// ---------------------------------------------------------------------------
-bool HypervWOLWorker::ParseWolPacket(const unsigned char* data, int len, unsigned char macOut[6])
-{
-    if (len < WOL_PACKET_MIN) return false;
-    for (int i = 0; i < 6; ++i)
-        if (data[i] != 0xFF) return false;
-    memcpy(macOut, data + 6, 6);
-    for (int rep = 0; rep < 16; ++rep)
-        if (memcmp(macOut, data + 6 + rep * 6, 6) != 0) return false;
-    return true;
-}
 
 // ---------------------------------------------------------------------------
 // ListenerThreadProc
@@ -122,12 +42,12 @@ DWORD WINAPI HypervWOLWorker::ListenerThreadProc(LPVOID lpParam)
     auto* ctx = reinterpret_cast<ListenerThreadContext*>(lpParam);
     if (!ctx || !ctx->worker) return 0;
 
-    unsigned char buf[1024];
+    std::array<unsigned char, 1024> buf{};
     while (WaitForSingleObject(ctx->stopEvent, 0) != WAIT_OBJECT_0)
     {
         sockaddr_in sender{};
         int senderLen = sizeof(sender);
-        int received = recvfrom(ctx->socket, reinterpret_cast<char*>(buf), sizeof(buf), 0,
+        int received = recvfrom(ctx->socket, reinterpret_cast<char*>(buf.data()), static_cast<int>(buf.size()), 0,
             reinterpret_cast<sockaddr*>(&sender), &senderLen);
         if (received <= 0)
         {
@@ -139,51 +59,46 @@ DWORD WINAPI HypervWOLWorker::ListenerThreadProc(LPVOID lpParam)
             continue;
         }
 
-        unsigned char mac[6];
-        if (!ParseWolPacket(buf, received, mac))
+        MacAddress mac;
+        if (!WolPacket::TryExtractMac(buf, received, mac))
             continue;
 
         wchar_t senderIp[INET_ADDRSTRLEN];
         InetNtopW(AF_INET, &sender.sin_addr, senderIp, INET_ADDRSTRLEN);
-        MacKey key{};
-        memcpy(key.data(), mac, 6);
 
-        VmInfo vmInfo;
-        const bool found = ctx->worker->m_vmCatalog.TryGetVmInfo(key, vmInfo);
-
-        if (!found)
+        if (!ctx->worker->m_vmCatalog.contains(mac))
         {
-            wprintf(L"WOL from %s  MAC %02X:%02X:%02X:%02X:%02X:%02X  (no VM in cache, ignored)\n",
-                senderIp, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+            std::wcout << L"WOL from " << senderIp << L"  MAC " << mac.ToString()
+                       << L"  (no VM in cache, ignored)" << std::endl;
             continue;
         }
+
+        const VmInfo& vmInfo = ctx->worker->m_vmCatalog[mac];
 
         const ULONGLONG now = GetTickCount64();
         bool inCooldown = false;
         {
             std::lock_guard<std::mutex> lock(ctx->worker->m_lastTriggerMutex);
-            auto cdIt = ctx->worker->m_lastTrigger.find(key);
+            auto cdIt = ctx->worker->m_lastTrigger.find(mac);
             if (cdIt != ctx->worker->m_lastTrigger.end() && (now - cdIt->second) < WOL_COOLDOWN_MS)
             {
                 inCooldown = true;
             }
             else
             {
-                ctx->worker->m_lastTrigger[key] = now;
+                ctx->worker->m_lastTrigger[mac] = now;
             }
         }
 
         if (inCooldown)
         {
-            wprintf(L"WOL from %s  MAC %02X:%02X:%02X:%02X:%02X:%02X  VM '%ls'  (cooldown, ignored)\n",
-                senderIp, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
-                vmInfo.name.c_str());
+            std::wcout << L"WOL from " << senderIp << L"  MAC " << mac.ToString()
+                       << L"  VM '" << vmInfo.name << L"'  (cooldown, ignored)" << std::endl;
             continue;
         }
 
-        wprintf(L"WOL from %s  MAC %02X:%02X:%02X:%02X:%02X:%02X  -> VM '%ls'\n",
-            senderIp, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
-            vmInfo.name.c_str());
+        std::wcout << L"WOL from " << senderIp << L"  MAC " << mac.ToString()
+                   << L"  -> VM '" << vmInfo.name << L"'" << std::endl;
         VmStarter::StartVm(vmInfo);
     }
 
@@ -203,8 +118,7 @@ void HypervWOLWorker::Run(HANDLE stopEvent, const std::wstring& listenSpec)
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
     { std::wcerr << L"WSAStartup failed." << std::endl; return; }
 
-    std::vector<ListenEndpoint> endpoints;
-    ParseListenSpec(listenSpec, endpoints);
+    ListenerAddressList endpoints(listenSpec);
 
     std::vector<ListenerThreadContext> contexts;
     contexts.reserve(endpoints.size());
