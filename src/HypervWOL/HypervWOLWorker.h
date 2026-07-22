@@ -57,10 +57,6 @@ private:
     static std::wstring Trim(const std::wstring& value);
     static DWORD WINAPI ListenerThreadProc(LPVOID lpParam);
 
-    // Requests start of the VM identified by info via WMI RequestStateChange(2).
-    // Returns true when the call succeeded.
-    static bool StartVm(const VmInfo& info);
-
     struct ListenerThreadContext
     {
         HypervWOLWorker* worker;

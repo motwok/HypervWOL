@@ -183,6 +183,7 @@
   <ItemGroup>
     <ClInclude Include="ServiceManager.h" />
     <ClInclude Include="VmMacCatalog.h" />
+    <ClInclude Include="VmStarter.h" />
     <ClInclude Include="WmiConnection.h" />
     <ClInclude Include="generated\Msvm_ComputerSystem.h" />
     <ClInclude Include="generated\Msvm_VirtualSystemSettingData.h" />

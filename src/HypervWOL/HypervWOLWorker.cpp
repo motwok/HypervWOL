@@ -21,10 +21,7 @@
 #include <ws2tcpip.h>
 #include "HypervWOLWorker.h"
 
-// Strongly-typed WMI classes generated from Hyper-V WMI schema
-// These classes provide compile-time type safety for all WMI operations
-#include "WmiConnection.h"
-#include "generated/Msvm_ComputerSystem.h"
+#include "VmStarter.h"
 
 #include <iostream>
 #include <string>
@@ -117,55 +114,6 @@ bool HypervWOLWorker::ParseWolPacket(const unsigned char* data, int len, unsigne
 }
 
 // ---------------------------------------------------------------------------
-// StartVm
-// Calls Msvm_ComputerSystem.RequestStateChange(2) for the given VM.
-// Uses strongly-typed generated WMI class - NO dynamic calls!
-// ---------------------------------------------------------------------------
-bool HypervWOLWorker::StartVm(const VmInfo& info)
-{
-    // Connect to WMI
-    WMI::Virtualization::WmiConnection conn;
-    if (!conn.Connect())
-        return false;
-
-    // Get VM object using strongly-typed class
-    auto vm = WMI::Virtualization::Msvm_ComputerSystem::Get(conn.GetServices(), info.name);
-    if (!vm.IsValid())
-        return false;
-
-    // Check current state - strongly typed enum!
-    if (vm.GetEnabledState() == WMI::Virtualization::Msvm_ComputerSystem::Enabled)
-    {
-        std::wcout << L"VM '" << info.name << L"' is already running." << std::endl;
-        return true;
-    }
-
-    // Request state change - strongly typed method call!
-    auto result = vm.RequestStateChange(
-        conn.GetServices(),
-        WMI::Virtualization::Msvm_ComputerSystem::Enabled_Requested);
-
-    if (result.ReturnValue == 4096)
-    {
-        std::wcout << L"VM '" << info.name << L"': start requested (async job started)." << std::endl;
-        if (result.Job)
-            result.Job->Release();
-        return true;
-    }
-    else if (result.ReturnValue == 0)
-    {
-        std::wcout << L"VM '" << info.name << L"': start requested." << std::endl;
-        return true;
-    }
-    else
-    {
-        std::wcerr << L"VM '" << info.name << L"': RequestStateChange returned "
-                   << result.ReturnValue << L"." << std::endl;
-        return false;
-    }
-}
-
-// ---------------------------------------------------------------------------
 // ListenerThreadProc
 // Receives packets on a single socket until stopEvent is signalled or the socket is closed.
 // ---------------------------------------------------------------------------
@@ -236,7 +184,7 @@ DWORD WINAPI HypervWOLWorker::ListenerThreadProc(LPVOID lpParam)
         wprintf(L"WOL from %s  MAC %02X:%02X:%02X:%02X:%02X:%02X  -> VM '%ls'\n",
             senderIp, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
             vmInfo.name.c_str());
-        StartVm(vmInfo);
+        VmStarter::StartVm(vmInfo);
     }
 
     return 0;
