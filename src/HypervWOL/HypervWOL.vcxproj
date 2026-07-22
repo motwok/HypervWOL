@@ -96,7 +96,7 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ResourceCompile>
-      <PreprocessorDefinitions>VER_FILEVERSION_MAJOR=$(VersionMajor);VER_FILEVERSION_MINOR=$(VersionMinor);VER_FILEVERSION_PATCH=$(VersionPatch);VER_FILEVERSION_BUILD=$(VersionBuild);VER_FILEVERSION_STR=&quot;$(VersionMajor).$(VersionMinor).$(VersionPatch).$(VersionBuild)&quot;;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>VER_FILEVERSION_MAJOR=$(VersionMajor);VER_FILEVERSION_MINOR=$(VersionMinor);VER_FILEVERSION_PATCH=$(VersionPatch);VER_FILEVERSION_BUILD=$(VersionBuild);VER_FILEVERSION_STR="$(VersionMajor).$(VersionMinor).$(VersionPatch).$(VersionBuild)";%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ResourceCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
@@ -174,10 +174,19 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="ServiceManager.cpp" />
+    <ClCompile Include="WmiConnection.cpp" />
+    <ClCompile Include="generated\Msvm_ComputerSystem.cpp" />
+    <ClCompile Include="generated\Msvm_VirtualSystemSettingData.cpp" />
+    <ClCompile Include="generated\Msvm_SyntheticEthernetPortSettingData.cpp" />
     <ClCompile Include="HypervWOLWorker.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ServiceManager.h" />
+    <ClInclude Include="VmMacCatalog.h" />
+    <ClInclude Include="WmiConnection.h" />
+    <ClInclude Include="generated\Msvm_ComputerSystem.h" />
+    <ClInclude Include="generated\Msvm_VirtualSystemSettingData.h" />
+    <ClInclude Include="generated\Msvm_SyntheticEthernetPortSettingData.h" />
     <ClInclude Include="HypervWOLWorker.h" />
   </ItemGroup>
   <ItemGroup>

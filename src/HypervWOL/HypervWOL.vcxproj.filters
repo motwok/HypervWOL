@@ -24,12 +24,39 @@
     <ClCompile Include="HypervWOLWorker.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="WmiConnection.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="generated\Msvm_ComputerSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="generated\Msvm_VirtualSystemSettingData.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="generated\Msvm_SyntheticEthernetPortSettingData.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ServiceManager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="HypervWOLWorker.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="WmiConnection.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="generated\Msvm_ComputerSystem.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="generated\Msvm_VirtualSystemSettingData.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="generated\Msvm_SyntheticEthernetPortSettingData.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="VmMacCatalog.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

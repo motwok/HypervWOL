@@ -23,18 +23,12 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#include <array>
+#include "VmMacCatalog.h"
+
 #include <map>
 #include <mutex>
 #include <string>
 #include <vector>
-
-// Holds the WMI object path and display name of a Hyper-V VM.
-struct VmInfo
-{
-    std::wstring name;    // ElementName from Msvm_ComputerSystem
-    std::wstring wmiPath; // __PATH for ExecMethod calls
-};
 
 // Listens for WOL magic packets on one or more interface:port entries.
 // A MAC→VM cache is built from Hyper-V WMI and refreshed every VM_CACHE_TTL_MS.
@@ -48,7 +42,7 @@ public:
     void Run(HANDLE stopEvent, const std::wstring& listenSpec = L"");
 
 private:
-    using MacKey = std::array<unsigned char, 6>;
+    using MacKey = VmMacCatalog::MacKey;
 
     struct ListenEndpoint
     {
@@ -63,10 +57,6 @@ private:
     static std::wstring Trim(const std::wstring& value);
     static DWORD WINAPI ListenerThreadProc(LPVOID lpParam);
 
-    // Queries Hyper-V WMI and rebuilds m_vmCache (MAC → VmInfo).
-    // Returns true when at least one VM was found.
-    bool RefreshVmCache();
-
     // Requests start of the VM identified by info via WMI RequestStateChange(2).
     // Returns true when the call succeeded.
     static bool StartVm(const VmInfo& info);
@@ -79,11 +69,8 @@ private:
         HANDLE stopEvent;
     };
 
-    // MAC address → VM info; rebuilt by RefreshVmCache every VM_CACHE_TTL_MS.
-    std::map<MacKey, VmInfo> m_vmCache;
-    std::mutex               m_cacheMutex;
+    VmMacCatalog m_vmCatalog;
     std::map<MacKey, ULONGLONG> m_lastTrigger;
     std::mutex               m_lastTriggerMutex;
-    ULONGLONG                m_cacheTimestamp = 0; // GetTickCount64() of last refresh
 };
 

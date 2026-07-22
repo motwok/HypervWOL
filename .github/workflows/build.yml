@@ -17,7 +17,6 @@ jobs:
       matrix:
         platform: [x64]
         configuration: [Debug, Release]
-        # Verhindert, dass die Debug-Konfiguration bei Pull Requests überhaupt startet
         exclude:
           - configuration: ${{ github.event_name == 'pull_request' && 'Debug' || 'KeinAusschluss' }}
 
@@ -33,7 +32,7 @@ jobs:
 
     - name: Determine version
       id: gitversion
-      uses: gittools/actions/gitversion/execute@v3.1.11
+      uses: gittools/actions/gitversion/execute@v3
 
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v3
@@ -45,7 +44,7 @@ jobs:
     - name: Upload Build Artifacts to GitHub Actions Docs
       uses: actions/upload-artifact@v4
       with:
-        name: HypervWOL-${{steps.gitversion.outputs.semVer}}-${{matrix.platform}}-${{matrix.configuration}}
+        name: HypervWOL-v${{steps.gitversion.outputs.majorMinorPatch}}-${{matrix.configuration}}-${{matrix.platform}}
         path: |
           ${{matrix.platform}}/${{matrix.configuration}}/*.exe
           ${{matrix.platform}}/${{matrix.configuration}}/*.pdb
@@ -136,7 +135,6 @@ jobs:
             fullHistoryMarkdown += "_Keine Historie verfügbar._\n";
           }
 
-          // FIX: Nutzung eines eindeutigen Krypto-Sicheren Delimiters für Multiline-Outputs
           const fs = require('fs');
           const crypto = require('crypto');
           
@@ -174,7 +172,7 @@ jobs:
         
         $env:HISTORY_BODY | Out-File -FilePath ./CHANGELOG.md -Encoding utf8
         
-        Compress-Archive -Path ./release/x64/*, ./LICENSE.txt, ./INSTALL.md, ./CHANGELOG.md -DestinationPath HypervWOL-${{steps.gitversion.outputs.semVer}}-x64.zip
+        Compress-Archive -Path ./release/x64/*, ./LICENSE.txt, ./INSTALL.md, ./CHANGELOG.md -DestinationPath HypervWOL-v${{steps.gitversion.outputs.majorMinorPatch}}-Release-x64.zip
 
     - name: Create GitHub Release with asset
       if: github.event_name == 'push' && github.ref == 'refs/heads/master' && matrix.configuration == 'Release' && steps.release_check.outputs.exists == 'false'
@@ -185,6 +183,6 @@ jobs:
         CURRENT_BODY: ${{ steps.get_pr.outputs.current_body }}
       run: |
         $env:CURRENT_BODY | Out-File -FilePath release_notes_temp.txt -Encoding utf8
-        gh release create $env:RELEASE_TAG "HypervWOL-${{steps.gitversion.outputs.semVer}}-x64.zip" "LICENSE.txt" --target master --notes-file release_notes_temp.txt --title "Release $env:RELEASE_TAG"
+        gh release create $env:RELEASE_TAG "HypervWOL-v${{steps.gitversion.outputs.majorMinorPatch}}-Release-x64.zip" "LICENSE.txt" --target master --notes-file release_notes_temp.txt --title "Release $env:RELEASE_TAG"
         Remove-Item CHANGELOG.md
         Remove-Item release_notes_temp.txt
