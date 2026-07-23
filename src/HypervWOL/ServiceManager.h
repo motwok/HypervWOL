@@ -32,9 +32,7 @@ public:
 
     bool Initialize(const std::wstring& serviceName);
 
-    // listenSpec: comma/semicolon separated list of interface:port entries.
-    // Empty string uses the default listener 0.0.0.0:9.
-    void SetBindIp(const std::wstring& bindIp) { m_BindIp = bindIp; }
+    void SetConfig(const Config& config) { m_Config = config; }
 
     void Run();
     void Stop();
@@ -51,6 +49,6 @@ private:
     SERVICE_STATUS_HANDLE m_ServiceStatusHandle;
     HANDLE                m_ServiceStopEvent;
     std::wstring          m_ServiceName;
-    std::wstring          m_BindIp;      // interface IP passed to the worker
+    Config                m_Config;
     HypervWOLWorker       m_Worker;
 };

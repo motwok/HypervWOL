@@ -25,7 +25,6 @@ ServiceManager* ServiceManager::s_Instance = nullptr;
 ServiceManager::ServiceManager()
     : m_ServiceStatusHandle(nullptr)
     , m_ServiceStopEvent(nullptr)
-    , m_BindIp(L"")
 {
     ZeroMemory(&m_ServiceStatus, sizeof(m_ServiceStatus));
     s_Instance = this;
@@ -64,7 +63,7 @@ VOID WINAPI ServiceManager::ServiceMain(DWORD argc, LPWSTR* argv)
 
     // Optional first service parameter: listen spec (comma/semicolon separated ip:port list)
     if (argc >= 2 && argv[1] && argv[1][0] != L'\0')
-        s_Instance->m_BindIp = argv[1];
+        s_Instance->m_Config.endpoints.Add(argv[1]);
     s_Instance->m_ServiceStatusHandle = RegisterServiceCtrlHandlerExW(
         s_Instance->m_ServiceName.c_str(),
         ServiceCtrlHandler,
@@ -122,7 +121,7 @@ DWORD WINAPI ServiceManager::ServiceWorkerThread(LPVOID lpParam)
 {
     if (s_Instance)
     {
-        s_Instance->m_Worker.Run(s_Instance->m_ServiceStopEvent, s_Instance->m_BindIp);
+        s_Instance->m_Worker.Run(s_Instance->m_ServiceStopEvent, s_Instance->m_Config);
     }
     return 0;
 }
@@ -161,7 +160,7 @@ void ServiceManager::Run()
     }
 
     std::wcout << L"Service running. Press Ctrl+C to stop..." << std::endl;
-    m_Worker.Run(m_ServiceStopEvent, m_BindIp);
+    m_Worker.Run(m_ServiceStopEvent, m_Config);
 
     std::wcout << L"Service stopped." << std::endl;
 }

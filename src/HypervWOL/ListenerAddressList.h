@@ -33,63 +33,14 @@ public:
         unsigned short port;
     };
 
-    ListenerAddressList(const std::wstring& listenSpec = L"")
+    ListenerAddressList() = default;
+
+    // Parses a single ip:port entry and appends it. Does not clear existing entries.
+    void Add(const std::wstring& spec)
     {
-        Parse(listenSpec);
-    }
-
-    bool Parse(const std::wstring& listenSpec)
-    {
-        m_endpoints.clear();
-
-        if (listenSpec.empty())
-        {
-            m_endpoints.push_back({ L"0.0.0.0", 9 });
-            return true;
-        }
-
-        size_t start = 0;
-        while (start <= listenSpec.size())
-        {
-            size_t end = listenSpec.find_first_of(L",;", start);
-            std::wstring token = Trim(listenSpec.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start));
-            if (!token.empty())
-            {
-                const size_t colon = token.find(L':');
-                std::wstring ip = colon == std::wstring::npos ? token : token.substr(0, colon);
-                std::wstring portText = colon == std::wstring::npos ? L"" : token.substr(colon + 1);
-                ip = Trim(ip);
-                portText = Trim(portText);
-                if (ip.empty())
-                    ip = L"0.0.0.0";
-
-                unsigned long port = 9;
-                if (!portText.empty())
-                {
-                    wchar_t* endPtr = nullptr;
-                    port = wcstoul(portText.c_str(), &endPtr, 10);
-                    if (endPtr == portText.c_str() || *endPtr != L'\0' || port == 0 || port > 65535)
-                    {
-                        std::wcerr << L"[Config] Ungueltiger Port in Listen-Eintrag: '" << token << L"'" << std::endl;
-                        if (end == std::wstring::npos)
-                            break;
-                        start = end + 1;
-                        continue;
-                    }
-                }
-
-                m_endpoints.push_back({ ip, static_cast<unsigned short>(port) });
-            }
-
-            if (end == std::wstring::npos)
-                break;
-            start = end + 1;
-        }
-
-        if (m_endpoints.empty())
-            m_endpoints.push_back({ L"0.0.0.0", 9 });
-
-        return true;
+        std::wstring token = Trim(spec);
+        if (!token.empty())
+            ParseToken(token);
     }
 
     size_t size() const { return m_endpoints.size(); }
@@ -103,6 +54,29 @@ public:
     const std::vector<Endpoint>& GetEndpoints() const { return m_endpoints; }
 
 private:
+    void ParseToken(const std::wstring& token)
+    {
+        const size_t colon = token.find(L':');
+        std::wstring ip = Trim(colon == std::wstring::npos ? token : token.substr(0, colon));
+        std::wstring portText = Trim(colon == std::wstring::npos ? L"" : token.substr(colon + 1));
+        if (ip.empty())
+            ip = L"0.0.0.0";
+
+        unsigned long port = 9;
+        if (!portText.empty())
+        {
+            wchar_t* endPtr = nullptr;
+            port = wcstoul(portText.c_str(), &endPtr, 10);
+            if (endPtr == portText.c_str() || *endPtr != L'\0' || port == 0 || port > 65535)
+            {
+                std::wcerr << L"[Config] Ungueltiger Port in Listen-Eintrag: '" << token << L"'" << std::endl;
+                return;
+            }
+        }
+
+        m_endpoints.push_back({ ip, static_cast<unsigned short>(port) });
+    }
+
     static std::wstring Trim(const std::wstring& value)
     {
         size_t start = 0;

@@ -172,6 +172,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Config.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="ServiceManager.cpp" />
     <ClCompile Include="WmiConnection.cpp" />
@@ -181,6 +182,7 @@
     <ClCompile Include="HypervWOLWorker.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Config.h" />
     <ClInclude Include="ListenerAddressList.h" />
     <ClInclude Include="MacAddress.h" />
     <ClInclude Include="ServiceManager.h" />

@@ -23,39 +23,29 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
-#include "Config.h"
-#include "ListenerAddressList.h"
-#include "MacAddress.h"
-#include "VmMacCatalog.h"
-
-#include <map>
-#include <mutex>
 #include <string>
-#include <vector>
+#include "ListenerAddressList.h"
 
-// Listens for WOL magic packets on one or more interface:port entries.
-// A MAC→VM cache is built from Hyper-V WMI and refreshed every VM_CACHE_TTL_MS.
-// An incoming WOL packet is only acted on when its MAC is present in the cache.
-// Repeated packets for the same MAC are suppressed for WOL_COOLDOWN_MS.
-class HypervWOLWorker
+// Holds all command-line settings for HypervWOL.
+// Does not contain a parsed endpoint list; callers build a ListenerAddressList
+// from listenSpec when needed.
+struct Config
 {
-public:
-    void Run(HANDLE stopEvent, const Config& config);
+    bool               consoleMode = false;
+    ListenerAddressList endpoints;           // parsed interface:port entries
+    std::wstring        serviceName = L"HypervWOL";
 
-private:
-    using MacKey = MacAddress;
+    // Parses argc/argv and returns a populated Config.
+    static Config FromArgs(int argc, wchar_t* argv[]);
 
-    using ListenEndpoint = ListenerAddressList::Endpoint;
-
-    struct ListenerSocketContext
+    // Returns true when the config is usable:
+    //   - serviceName is not empty
+    //   - endpoints contains at least one entry
+    //   - endpoints does not exceed MAXIMUM_WAIT_OBJECTS - 1 (one slot reserved for the stop event)
+    bool IsValid() const
     {
-        SOCKET socket;
-        HANDLE eventHandle;
-        ListenEndpoint endpoint;
-    };
-
-    VmMacCatalog m_vmCatalog;
-    std::map<MacKey, ULONGLONG> m_lastTrigger;
-    std::mutex               m_lastTriggerMutex;
+        return !serviceName.empty()
+            && !endpoints.empty()
+            && endpoints.size() <= static_cast<size_t>(MAXIMUM_WAIT_OBJECTS - 1);
+    }
 };
-
